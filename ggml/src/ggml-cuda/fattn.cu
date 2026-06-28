@@ -590,6 +590,14 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
             ggml_cuda_flash_attn_ext_mma_f16(ctx, dst);
             break;
     }
+
+    // Pre-Ampere GPUs (no CUDA-graph support, see ggml_cuda_graph_set_enabled) exhibit an
+    // intermittent illegal memory access in the flash-attention path when its kernels run
+    // concurrently with surrounding async work (only reproducible with async launches; any
+    // serialization hides it). Serialize the FA op on these architectures to close the race.
+    if (ggml_cuda_info().devices[ctx.device].cc < GGML_CUDA_CC_AMPERE) {
+        CUDA_CHECK(cudaStreamSynchronize(ctx.stream()));
+    }
 }
 
 bool ggml_cuda_flash_attn_ext_supported(int device, const ggml_tensor * dst) {
